@@ -37,7 +37,7 @@ python main.py --dataset cifar10 --model resnet20 --optimizer adaact
 @inproceedings{seung2024adaact,
   title={An Adaptive Method Stabilizing Activations for Enhanced Generalization},
   author={Seung, Hyunseok and Lee, Jaewoo and Ko, Hyunsuk},
-  booktitle={IEEE ICDM Workshop},
+  booktitle={IEEE International Conference on Data Mining Workshop},
   year={2024}
 }
 ```
