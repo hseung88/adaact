@@ -20,16 +20,29 @@ Key features:
 ### Installation
 
 ```bash
-git clone https://github.com/hseung88/adaact.git
-cd adaact
-pip install -r requirements.txt
+conda env create -n adaact -f environments.yml
+conda activate adaact
 ```
 
 ### Running the Code
 
 To run experiments with AdaAct on CIFAR-10:
 ```bash
-python main.py --dataset cifar10 --model resnet20 --optimizer adaact
+python main.py --model resnet20 --optim adaact --lr 0.1 --beta1 0.9 --beta2 0.999 --eps 1e-8 --weight_decay 0.002 --epoch 200 --run 0;
+```
+For ImageNet:
+```bash
+torchrun --nproc_per_node=2 ./train.py --model resnet50 --sched cosine --epochs 100 --opt adaact \
+--lr 4.0 --opt-betas 0.9 0.999 --opt-eps 1e-8 --weight-decay 1e-4 --workers 16 \
+--warmup-epochs 0 --warmup-lr 0.4 --min-lr 0.0 --batch-size 256 --grad-accum-steps 4 --amp \
+--aug-repeats 0 --aa rand-m7-mstd0.5-inc1 --smoothing 0.0 --remode pixel --crop-pct 0.95 \
+--reprob 0.0 --drop 0.0 --drop-path 0.05 --mixup 0.1 --cutmix 1.0;
+
+torchrun --nproc_per_node=2 ./train.py --model deit_small_patch16_224 --sched cosine --epochs 150 --opt adaact \
+--lr 4.0 --opt-betas 0.9 0.999 --opt-eps 1e-8 --weight-decay 2e-7 --workers 16 \
+--warmup-epochs 5 --warmup-lr 0.4 --min-lr 0.0004 --batch-size 256 --grad-accum-steps 4 --amp \
+--aug-repeats 0 --aa rand-m7-mstd0.5-inc1 --smoothing 0.1 --remode pixel --reprob 0.25 \
+--drop 0.0 --drop-path 0.1 --mixup 0.8 --cutmix 1.0;
 ```
 
 ## Citation
