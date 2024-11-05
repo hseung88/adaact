@@ -28,7 +28,8 @@ conda activate adaact
 
 To run experiments with AdaAct on CIFAR-10:
 ```bash
-python main.py --model resnet20 --optim adaact --lr 0.1 --beta1 0.9 --beta2 0.999 --eps 1e-8 --weight_decay 0.002 --epoch 200 --run 0;
+python main.py --model resnet20 --optim adaact --lr 0.1 --beta1 0.9 --beta2 0.999 --eps 1e-8 \
+--weight_decay 0.002 --epoch 200 --run 0;
 ```
 For ImageNet:
 ```bash
