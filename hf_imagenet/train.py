@@ -40,9 +40,6 @@ from optim_factory import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler_v2, scheduler_kwargs
 from timm.utils import ApexScaler, NativeScaler
 
-from optimizers.kfac2 import KFAC
-from optimizers.eva import Eva
-
 
 try:
     from apex import amp
@@ -179,14 +176,6 @@ group.add_argument('--clip-mode', type=str, default='norm',
                    help='Gradient clipping mode. One of ("norm", "value", "agc")')
 group.add_argument('--layer-decay', type=float, default=None,
                    help='layer-wise learning rate decay (default: None)')
-group.add_argument('--damping', default=1.0, type=float, metavar='DAMPING',
-                   help='KFAC variants Damping (default: None, use opt default)')
-#group.add_argument('--update', default=50, type=int, metavar='UPDATE FREQ',
-#                   help='MAC/SMAC Update Frequency (default: None, use opt default)')
-group.add_argument('--tinv', default=50, type=int, metavar='TINV',
-                   help='KFAC variants Update Frequency (default: None, use opt default)')
-group.add_argument('--rank_size', default=10, type=int, metavar='SKETCH SIZE',
-                   help='NysAct sketch size (default: None, use opt default)')
 group.add_argument('--opt-kwargs', nargs='*', default={}, action=utils.ParseKwargs)
 
 
@@ -780,12 +769,6 @@ def main():
     if utils.is_primary(args):
         _logger.info(
             f'Scheduled epochs: {num_epochs}. LR stepped per {"epoch" if lr_scheduler.t_in_epochs else "update"}.')
-
-    preconditioner = None
-    if args.opt.lower() in ['eva']:
-        preconditioner = Eva(model)
-    elif args.opt.lower() in ['kfac']:
-        preconditioner = KFAC(model)
     
     try:
         _start_time_ = time.time()
@@ -809,11 +792,10 @@ def main():
                 loss_scaler=loss_scaler,
                 model_ema=model_ema,
                 mixup_fn=mixup_fn,
-                preconditioner=preconditioner,
             )
             
-            MB = 1024.0 * 1024.0
-            print(torch.cuda.max_memory_allocated() / MB)
+            #MB = 1024.0 * 1024.0
+            #print(torch.cuda.max_memory_allocated() / MB)
             
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                 if utils.is_primary(args):
@@ -888,7 +870,6 @@ def train_one_epoch(
         loss_scaler=None,
         model_ema=None,
         mixup_fn=None,
-        preconditioner=None,
 ):
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
@@ -960,9 +941,6 @@ def train_one_epoch(
                             value=args.clip_grad,
                             mode=args.clip_mode,
                         )
-                    if args.opt.lower() in ['eva', 'kfac'] and preconditioner is not None:
-                    #if args.opt.lower() in ['eva'] and preconditioner is not None:
-                        preconditioner.step()
                     optimizer.step()
 
         if has_no_sync and not need_update:

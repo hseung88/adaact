@@ -2,10 +2,7 @@ import logging as logger
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
-from .utils.adaact_utils import AdaActStats
-from .utils.torch_utils import build_layer_map
-from .utils.tensor_utils import reshape_grad, moving_average
-
+from .utils.adaact_utils import AdaActStats, build_layer_map, reshape_grad, moving_average
 
 
 class AdaAct(Optimizer):
@@ -15,8 +12,7 @@ class AdaAct(Optimizer):
         lr=0.1,
         betas=(0.9, 0.999),
         eps=1e-8,
-        weight_decay=0.002,
-        update=1
+        weight_decay=0.002
     ):
         if lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
@@ -28,8 +24,6 @@ class AdaAct(Optimizer):
             raise ValueError('Invalid beta parameter at index 1: {}'.format(betas[1]))
         if weight_decay < 0.0:
             raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
-        if update < 1.0:
-            raise ValueError("Invalid update period: {}".format(update))
 
         defaults = dict(lr=lr,
                         betas=betas,
@@ -44,7 +38,6 @@ class AdaAct(Optimizer):
         self.ema_grad = {}
         self.ema_n = 0
         self._step = 0
-        self.update = update
 
     @property
     def model(self):
@@ -70,14 +63,13 @@ class AdaAct(Optimizer):
         if eval_mode or (not torch.is_grad_enabled()):
             return
 
-        if (self._step % self.update) == 0:
-            A = self.stats(module, forward_input[0].detach().clone())
+        A = self.stats(module, forward_input[0].data)
 
-            if self._step == 0:
-                self.ema_A[module] = A.new_zeros(A.size(0))
-                self.A_inv[module] = torch.zeros_like(self.ema_A[module])
+        if self._step == 0:
+            self.ema_A[module] = A.new_zeros(A.size(0))
+            self.A_inv[module] = torch.zeros_like(self.ema_A[module])
 
-            moving_average(A, self.ema_A[module], betas[1])
+        moving_average(A, self.ema_A[module], betas[1])
 
     def update_inverse(self, layer, eps):
         A = self.ema_A[layer]
@@ -97,7 +89,7 @@ class AdaAct(Optimizer):
 
                 d_p = p.grad.data
                 # Decoupled weight decay
-                p.data.mul_(1-lr*weight_decay)
+                p.data.mul_(1 - lr * weight_decay)
                 p.data.add_(d_p, alpha=-lr)
     
     def step(self, closure=None):
@@ -107,12 +99,9 @@ class AdaAct(Optimizer):
         
         if 'ema_step' not in group:
             group['ema_step'] = 0
-        
-        if (self._step % self.update) == 0:
-            group['ema_step'] += 1
-            self.ema_n = 1.0 - betas[1] ** group['ema_step']
 
-        b_inv_update = ((self._step % self.update) == 0)
+        group['ema_step'] += 1
+        self.ema_n = 1.0 - betas[1] ** group['ema_step']
         
         # compute the preconditioned gradient layer-by-layer
         for layer in self.layer_map:
@@ -120,8 +109,7 @@ class AdaAct(Optimizer):
             if not isinstance(layer, (nn.Linear, nn.Conv2d)):
                 continue
 
-            if b_inv_update:
-                self.update_inverse(layer, eps)
+            self.update_inverse(layer, eps)
             
             grad_mat = reshape_grad(layer)
             

@@ -1,6 +1,4 @@
 """Train CIFAR100 with PyTorch."""
-from __future__ import print_function
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,22 +10,8 @@ import os
 import argparse
 import time
 from models import *
-from torch.optim import Adam, SGD, AdamW
-from optimizers.kfac import KFAC
-#from optimizers.kfac2 import KFAC
-from optimizers.foof import FOOF
-from optimizers.adaact_v2 import AdaAct
-from optimizers.mac import MAC
-#from optimizers.mac_v2 import MAC_v2
-from optimizers.smac import SMAC
-from optimizers.sgdhess import SGDHess
-from optimizers.adahessian import Adahessian
-#from optimizers.eva import Eva
-from optimizers.eva2 import Eva
-from optimizers.nysact_mod import NysAct_G, NysAct_S
-#from optimizers.nysact_ls import NysAct_LS
-from optimizers.shaper import Shaper
-from optimizers.soap import SOAP
+from torch.optim import SGD, Adam, AdamW
+from optimizers.adaact import AdaAct
 
 
 def get_parser():
@@ -35,26 +19,16 @@ def get_parser():
     parser.add_argument('--data_dir', default='./data', type=str)
     parser.add_argument('--epoch', default=200, type=int, help='Total number of training epochs')
     parser.add_argument('--model', default='resnet', type=str, help='model',
-                        choices=['resnet32','resnet110','resnet', 'densenet', 'wrn', 'deit_tiny'])
+                        choices=['resnet34', 'densenet121'])
     parser.add_argument('--optim', default='sgd', type=str, help='optimizer',
-                        choices=['sgd', 'adam', 'adamw', 'adan', 'kfac', 'foof', 'adaact', 'shaper',
-                                 'mac', 'smac', 'sgdhess', 'adahessian', 'eva', 'nysact_g', 'nysact_s',
-                                 'soap', 'mac_v2'
-                                ])
+                        choices=['sgd', 'adam', 'adamw', 'adaact'])
     parser.add_argument('--run', default=0, type=int, help='number of runs')
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--eps', default=1e-8, type=float, help='eps for numerical stability')
     parser.add_argument('--momentum', default=0.9, type=float, help='momentum term')
-    parser.add_argument('--stat_decay', default=1e-4, type=float, help='stat decay')
     parser.add_argument('--beta1', default=0.9, type=float, help='moving average coefficients beta_1')
     parser.add_argument('--beta2', default=0.999, type=float, help='moving average coefficients beta_2')
-    parser.add_argument('--weight_decay', default=5e-4, type=float,
-                        help='weight decay for optimizers')
-    parser.add_argument('--rank', default=5, type=int, help='the number of subcolumns used in nysact')
-    parser.add_argument('--damping', default=0.01, type=float, help='damping factor for kfac and foof')
-    parser.add_argument('--tcov', default=5, type=int, help='preconditioner update period for kfac and foof')
-    parser.add_argument('--tinv', default=50, type=int, help='preconditioner inverse period for kfac and foof')
-    parser.add_argument('--update', default=1, type=int, help='preconditioner update and inverse period')
+    parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay for optimizers')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
     parser.add_argument('--batchsize', type=int, default=128, help='batch size')
     parser.add_argument('--lr_scheduler', type=str, default='cosine', help='learning rate scheduler',
@@ -91,9 +65,8 @@ def build_dataset(args):
     return train_loader, test_loader
 
 
-def get_ckpt_name(model='resnet', optimizer='sgd', lr=0.1, momentum=0.9, stat_decay=0.9,
-                  beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=5e-4, rank=5,
-                  damping=0.01, tcov=5, tinv=50, update=1, batchsize=128,
+def get_ckpt_name(model='resnet', optimizer='sgd', lr=0.1, momentum=0.9,
+                  beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=5e-4, batchsize=128,
                   epoch=200, run=0, lr_scheduler='cosine'):
     name = {
         'sgd': 'lr{}-momentum{}-wdecay{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
@@ -102,38 +75,8 @@ def get_ckpt_name(model='resnet', optimizer='sgd', lr=0.1, momentum=0.9, stat_de
             lr, beta1, beta2, weight_decay, eps, lr_scheduler, batchsize, epoch, run),
         'adamw': 'lr{}-betas{}-{}-wdecay{}-eps{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
             lr, beta1, beta2, weight_decay, eps, lr_scheduler, batchsize, epoch, run),
-        'kfac': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'eva': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'foof': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'adaact': 'lr{}-betas{}-{}-eps{}-wdecay{}-update{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, beta1, beta2, eps, weight_decay, update, lr_scheduler, batchsize, epoch, run),
-        'mac': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'smac': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'sgdhess': 'lr{}-momentum{}-wdecay{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, weight_decay, lr_scheduler, batchsize, epoch, run),
-        'adahessian': 'lr{}-betas{}-{}-wdecay{}-eps{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, beta1, beta2, weight_decay, eps, lr_scheduler, batchsize, epoch, run),
-        #'eva': 'lr{}-momentum{}-wdecay{}-stat_decay{}-damping{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-        #    lr, momentum, weight_decay, stat_decay, damping, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        #'kfac': 'lr{}-momentum{}-wdecay{}-stat_decay{}-damping{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-        #    lr, momentum, weight_decay, stat_decay, damping, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'nysact_g': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-rank{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, rank, lr_scheduler, batchsize, epoch, run),
-        'nysact_s': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-rank{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, rank, lr_scheduler, batchsize, epoch, run),
-        'nysact_ls': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-rank{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, rank, lr_scheduler, batchsize, epoch, run),
-        'shaper': 'lr{}-momentum{}-stat_decay{}-damping{}-wdecay{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, stat_decay, damping, weight_decay, tcov, tinv, lr_scheduler, batchsize, epoch, run),
-        'soap': 'lr{}-betas{}-{}-wdecay{}-eps{}-update{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, beta1, beta2, weight_decay, eps, update, lr_scheduler, batchsize, epoch, run),
-        'mac_v2': 'lr{}-momentum{}-wdecay{}-stat_decay{}-damping{}-tcov{}-tinv{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
-            lr, momentum, weight_decay, stat_decay, damping, tcov, tinv, lr_scheduler, batchsize, epoch, run),
+        'adaact': 'lr{}-betas{}-{}-eps{}-wdecay{}-lr_sched{}-batchsize{}-epoch{}-run{}'.format(
+            lr, beta1, beta2, eps, weight_decay, lr_scheduler, batchsize, epoch, run),
     }[optimizer]
     return '{}-{}-{}'.format(model, optimizer, name)
 
@@ -149,13 +92,8 @@ def load_checkpoint(ckpt_name):
 def build_model(args, device, ckpt=None):
     print('==> Building model..')
     net = {
-        'resnet32': resnet32,
-        'resnet110': resnet110,
-        'resnet': ResNet34,
-        'densenet': DenseNet121,
-        'wrn': wrn_28_10,
-        'deit_tiny': DeiT32Tiny
-        #'efficientnet': efficientnet_cifar,
+        'resnet34': ResNet34,
+        'densenet121': DenseNet121,
         }[args.model]()
     net = net.to(device)
     if device == 'cuda':
@@ -180,50 +118,13 @@ def create_optimizer(args, model_params):
     elif args.optim == 'adamw':
         return AdamW(model_params, args.lr, betas=(args.beta1, args.beta2),
                           weight_decay=args.weight_decay, eps=args.eps)
-    elif args.optim == 'kfac':
-        return KFAC(model_params, args.lr, momentum=args.momentum, stat_decay=args.stat_decay,
-                      weight_decay=args.weight_decay, damping=args.damping, Tcov=args.tcov, Tinv=args.tinv)
-    elif args.optim == 'eva':
-        return Eva(model_params, args.lr, momentum=args.momentum, stat_decay=args.stat_decay,
-                      weight_decay=args.weight_decay, damping=args.damping, Tcov=args.tcov, Tinv=args.tinv)
-    elif args.optim == 'foof':
-        return FOOF(model_params, args.lr, momentum=args.momentum, stat_decay=args.stat_decay,
-                      weight_decay=args.weight_decay, damping=args.damping, Tcov=args.tcov, Tinv=args.tinv)
     elif args.optim == 'adaact':
         return AdaAct(model_params, args.lr, betas=(args.beta1, args.beta2),
-                      weight_decay=args.weight_decay, eps=args.eps, update=args.update)
-    elif args.optim == 'mac':
-        return MAC(model_params, args.lr, args.momentum, stat_decay=args.stat_decay,
-                        damping=args.damping, weight_decay=args.weight_decay, Tcov=args.tcov, Tinv=args.tinv)
-    elif args.optim == 'smac':
-        return SMAC(model_params, args.lr, args.momentum, stat_decay=args.stat_decay, 
-                         damping=args.damping, weight_decay=args.weight_decay, Tcov=args.tcov, Tinv=args.tinv)
-    elif args.optim == 'sgdhess':
-        return SGDHess(model_params, args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    elif args.optim == 'adahessian':
-        return Adahessian(model_params, args.lr, betas=(args.beta1, args.beta2), weight_decay=args.weight_decay)
-    #elif args.optim == 'eva':
-    #    return SGD(model_params, args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    #elif args.optim == 'kfac':
-    #    return SGD(model_params, args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    elif args.optim == 'nysact_g':
-        return NysAct_G(model_params, args.lr, momentum=args.momentum, stat_decay=args.stat_decay,
-                    weight_decay=args.weight_decay, damping=args.damping, Tcov=args.tcov, Tinv=args.tinv, rank_size=args.rank)
-    elif args.optim == 'nysact_s':
-        return NysAct_S(model_params, args.lr, momentum=args.momentum, stat_decay=args.stat_decay,
-                    weight_decay=args.weight_decay, damping=args.damping, Tcov=args.tcov, Tinv=args.tinv, rank_size=args.rank)
-    elif args.optim == 'shaper':
-        return Shaper(model_params, args.lr, momentum=args.momentum, stat_decay=args.stat_decay,
-                      weight_decay=args.weight_decay, damping=args.damping, Tcov=args.tcov, Tinv=args.tinv)
-    elif args.optim == 'soap':
-        return SOAP(model_params, args.lr, betas=(args.beta1, args.beta2),
-                          weight_decay=args.weight_decay, eps=args.eps, precondition_frequency=args.update)
-    elif args.optim == 'mac_v2':
-        return SGD(model_params, args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+                      weight_decay=args.weight_decay, eps=args.eps)
     else:
         print('Optimizer not found')
 
-def train(net, epoch, device, data_loader, optimizer, criterion, args, preconditioner):
+def train(net, epoch, device, data_loader, optimizer, criterion):
     print('\nEpoch: %d' % epoch)
     net.train()
     tr_loss = 0
@@ -235,13 +136,7 @@ def train(net, epoch, device, data_loader, optimizer, criterion, args, precondit
         optimizer.zero_grad()
         outputs = net(inputs)
         loss = criterion(outputs, targets)
-        if args.optim in ['sgdhess', 'adahessian']:
-            loss.backward(create_graph = True)
-        else:
-            loss.backward()
-        #if args.optim in ['eva', 'kfac', 'mac_v2'] and preconditioner is not None:
-        #if args.optim in ['eva'] and preconditioner is not None:
-        #    preconditioner.step()
+        loss.backward()
         optimizer.step()
         
         tr_loss += loss.item()
@@ -286,14 +181,10 @@ def main():
     train_loader, test_loader = build_dataset(args)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    ckpt_name = get_ckpt_name(model=args.model, optimizer=args.optim, lr=args.lr,
-                              momentum=args.momentum, stat_decay=args.stat_decay,
-                              beta1=args.beta1, beta2=args.beta2,
-                              eps = args.eps, run=args.run,
-                              weight_decay = args.weight_decay,
-                              damping=args.damping, tcov=args.tcov, tinv=args.tinv,
-                              rank=args.rank, epoch=args.epoch, batchsize=args.batchsize,
-                              update=args.update, lr_scheduler=args.lr_scheduler,
+    ckpt_name = get_ckpt_name(model=args.model, optimizer=args.optim, lr=args.lr, momentum=args.momentum,
+                              beta1=args.beta1, beta2=args.beta2, eps = args.eps, run=args.run,
+                              weight_decay = args.weight_decay, epoch=args.epoch, batchsize=args.batchsize,
+                              lr_scheduler=args.lr_scheduler,
                               )
     print('ckpt_name:', ckpt_name)
     if args.resume:
@@ -318,21 +209,9 @@ def main():
     net = build_model(args, device, ckpt=ckpt)
     criterion = nn.CrossEntropyLoss()
     optimizer = create_optimizer(args, net.parameters())
-    
-    #if args.optim in ['foof', 'adaact', 'nysact', 'shaper', 'kfac']:
-    if args.optim in ['foof', 'adaact', 'nysact_g', 'nysact_s', 'shaper', 'kfac', 'eva', 'mac','smac']:
-        optimizer.model = net
 
-    preconditioner = None
-    #if args.optim in ['eva']:
-    #    preconditioner = Eva(net, factor_decay=args.stat_decay, damping=args.damping,
-    #                        fac_update_freq=args.tcov, kfac_update_freq=args.tinv)
-    #elif args.optim in ['kfac']:
-    #    preconditioner = KFAC(net, factor_decay=args.stat_decay, damping=args.damping,
-    #                        fac_update_freq=args.tcov, kfac_update_freq=args.tinv)
-    #elif args.optim in ['mac_v2']:
-    #    preconditioner = MAC_v2(net, factor_decay=args.stat_decay, damping=args.damping,
-    #                        fac_update_freq=args.tcov, kfac_update_freq=args.tinv)
+    if args.optim in ['adaact']:
+        optimizer.model = net
     
     # learning rate scheduler
     if args.lr_scheduler == 'cosine':
@@ -347,16 +226,16 @@ def main():
     tik = time.time()
     for epoch in range(start_epoch + 1, args.epoch):
         start = time.time()
-        train_acc, train_loss = train(net, epoch, device, train_loader, optimizer, criterion, args, preconditioner)
+        train_acc, train_loss = train(net, epoch, device, train_loader, optimizer, criterion)
         end = time.time()
         test_acc = test(net, device, test_loader, criterion)
         scheduler.step()
         execution_time = end - start
         print('Time: {}'.format(execution_time))
 
-        if epoch == 0:
-            MB = 1024.0 * 1024.0
-            print('GPU Memory Usage: {}'.format(torch.cuda.max_memory_allocated() / MB))
+        #if epoch == 0:
+        #    MB = 1024.0 * 1024.0
+        #    print('GPU Memory Usage: {}'.format(torch.cuda.max_memory_allocated() / MB))
 
         # Save checkpoint.
         if test_acc > best_acc:
@@ -377,7 +256,8 @@ def main():
         execution_times.append(execution_time)
         if not os.path.isdir('curve'):
             os.mkdir('curve')
-        torch.save({'train_loss': train_losses, 'train_acc': train_accuracies, 'test_acc': test_accuracies, 'time': execution_times}, 
+        torch.save({'train_loss': train_losses, 'train_acc': train_accuracies, 'test_acc': test_accuracies,
+                    'time': execution_times},
                os.path.join('curve', ckpt_name))
     tok = time.time()
     print('Total Time: {}'.format(tok-tik))
