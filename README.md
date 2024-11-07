@@ -32,13 +32,16 @@ python main.py --model resnet20 --optim adaact --lr 0.1 --beta1 0.9 --beta2 0.99
 --weight_decay 0.002 --batchsize 128 --epoch 200 --run 0;
 ```
 For ImageNet:
+1. ResNets
 ```bash
 torchrun --nproc_per_node=2 ./train.py --model resnet50 --epochs 100 --data-dir ./data/imagenet \
 --opt adaact --lr 4.0 --opt-betas 0.9 0.999 --opt-eps 1e-8 --weight-decay 1e-4 --sched cosine \
 --workers 16 --warmup-epochs 0 --warmup-lr 0.4 --min-lr 0.0 --batch-size 512 --grad-accum-steps 2 --amp \
 --aug-repeats 0 --aa rand-m7-mstd0.5-inc1 --smoothing 0.0 --remode pixel --crop-pct 0.95 \
 --reprob 0.0 --drop 0.0 --drop-path 0.05 --mixup 0.1 --cutmix 1.0;
+```
 
+2. DeiT-Small
 torchrun --nproc_per_node=2 ./train.py --model deit_small_patch16_224 --epochs 150 --data-dir ./data/imagenet \
 --opt adaact --lr 4.0 --opt-betas 0.9 0.999 --opt-eps 1e-8 --weight-decay 2e-7 --sched cosine \
 --workers 16 --warmup-epochs 5 --warmup-lr 0.4 --min-lr 0.0004 --batch-size 256 --grad-accum-steps 4 --amp \
