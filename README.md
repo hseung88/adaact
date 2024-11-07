@@ -41,7 +41,7 @@ torchrun --nproc_per_node=2 ./train.py --model resnet50 --epochs 100 --data-dir 
 --reprob 0.0 --drop 0.0 --drop-path 0.05 --mixup 0.1 --cutmix 1.0;
 ```
 
-2. DeiT-Small
+2. ViT-S
 torchrun --nproc_per_node=2 ./train.py --model deit_small_patch16_224 --epochs 150 --data-dir ./data/imagenet \
 --opt adaact --lr 4.0 --opt-betas 0.9 0.999 --opt-eps 1e-8 --weight-decay 2e-7 --sched cosine \
 --workers 16 --warmup-epochs 5 --warmup-lr 0.4 --min-lr 0.0004 --batch-size 256 --grad-accum-steps 4 --amp \
