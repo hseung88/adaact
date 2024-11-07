@@ -1,4 +1,4 @@
-name: optim
+name: adaact
 channels:
   - pytorch
   - nvidia
